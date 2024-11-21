@@ -1,0 +1,15 @@
+services:
+  triton:
+    image: triton_doc2vec_3
+    volumes:
+      - /Users/viet-quanggg/SelfProjects/JP4F/triton-inference-servel/deploy-triton:/models
+    ports:
+      - "1234:8000"
+      - "1235:8001"
+      - "1236:8002"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7000/v2/health/ready"]
+      interval: 60s
+      timeout: 5s
+      retries: 2
+    command: tritonserver --model-repository=/models --http-port 8000 --grpc-port 8001 --metrics-port 8002
