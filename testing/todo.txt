@@ -1,0 +1,48 @@
+1. Prepare data
+a/ 1 short sentence describe CV (specific the Job Title)
+b/ 3 short sentences decribe JDs - 2 big different Job Title with - 1 is same same as 1 Job
+* The 2 similiar JD ~ Job Title of CV
+
+2. Compare Sparse - Normal search - High speed & High precision
+a/ Check for the distance of CV with 3 JD
+-> Compare the Cosine
+
+
+=====================================================
+1. Create collection with HiSpe & HiPre
+
+"""
+from qdrant_client import QdrantClient, models
+
+client = QdrantClient(url="http://localhost:6333")
+
+client.create_collection(
+    collection_name="{collection_name}",
+    vectors_config=models.VectorParams(size=768, distance=models.Distance.COSINE),
+    quantization_config=models.ScalarQuantization(
+        scalar=models.ScalarQuantizationConfig(
+            type=models.ScalarType.INT8,
+            always_ram=True,
+        ),
+    ),
+)
+"""
+
+Search:
+"""
+from qdrant_client import QdrantClient, models
+
+client = QdrantClient(url="http://localhost:6333")
+
+client.query_points(
+    collection_name="{collection_name}",
+    query=[0.2, 0.1, 0.9, 0.7],
+    search_params=models.SearchParams(hnsw_ef=128, exact=False),
+    limit=3,
+)
+"""
+
+so sánh giữa config gốc: m = 10, ef_construct = 100 ||| với m = 64, ef_construct = 512
+
+
+2.

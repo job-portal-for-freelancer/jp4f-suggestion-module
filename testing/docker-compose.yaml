@@ -2,7 +2,7 @@ services:
   triton:
     image: triton_doc2vec_3
     volumes:
-      - /Users/viet-quanggg/SelfProjects/JP4F/triton-inference-servel/deploy-triton:/models
+      - /Users/viet-quanggg/SelfProjects/JP4F/triton-inference-server/deploy-triton:/models
     ports:
       - "1234:8000"
       - "1235:8001"

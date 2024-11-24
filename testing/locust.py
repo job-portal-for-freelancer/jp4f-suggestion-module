@@ -22,4 +22,6 @@ class TritonAPIUser(HttpUser):
         }
         
         # Send a POST request to the /infer endpoint
-        self.client.post("/infer", json=payload)
+        self.client.post("/infer-local", json=payload)
+        self.client.post("/infer-triton", json=payload)
+
