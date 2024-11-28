@@ -1,0 +1,24 @@
+name: "bls_w2v"
+max_batch_size: 0
+backend: "python"
+
+input [
+{
+    name: "TEXT"
+    data_type: TYPE_STRING
+    dims: [-1]
+}
+]
+
+output [
+{
+    name: "VEC"
+    data_type: TYPE_FP32
+    dims: [-1, 1024]
+}
+]
+
+instance_group [
+    {
+      kind: KIND_CPU
+    }
