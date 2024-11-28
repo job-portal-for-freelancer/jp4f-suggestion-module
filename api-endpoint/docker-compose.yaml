@@ -8,3 +8,7 @@ services:
       - "1235:8001"
       - "1236:8002"
     command: tritonserver --model-repository=/models --http-port 8000 --grpc-port 8001 --metrics-port 8002
+    deploy:
+      resources:
+        limits:
+          memory: 3G # Limit the container to 3GB of RAM
