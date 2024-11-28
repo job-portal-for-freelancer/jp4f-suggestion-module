@@ -31,10 +31,10 @@ qdrant_client = QdrantClient(
 triton_client = httplient.InferenceServerClient(url=TRITON_URL, verbose=False)
 
 class InputProjectDto(BaseModel):
-    ProjectDescription: str
+    projectDescription: str
 
 class InputResumseDto(BaseModel):
-    ResumeDescription: str
+    resumeDescription: str
 
 
 @app.post("/python/store-project")
@@ -70,7 +70,7 @@ async def infer_method1(input_data: InputResumseDto):
 
 async def w2c(input_data: InputProjectDto) -> np.ndarray:
     try:
-        text_tensor = np.array([input_data.text], dtype=np.object_)
+        text_tensor = np.array([input_data.projectDescription], dtype=np.object_)
         
         # text_input = grpcclient.InferInput("TEXT", text_tensor.shape, "BYTES")
         text_input = httplient.InferInput("TEXT", text_tensor.shape, "BYTES")
