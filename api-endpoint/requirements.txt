@@ -2,5 +2,5 @@ fastapi==0.115.2
 pydantic==2.9.2
 tritonclient==2.36.0
 uvicorn==0.32.0
-numpy==1.26.4
+numpy==1.24.4
 qdrant-client==1.12.1

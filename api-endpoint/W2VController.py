@@ -11,7 +11,11 @@ from qdrant_client import QdrantClient, models
 import random
 
 
-app = FastAPI()
+app = FastAPI(
+       docs_url="/python/docs",  # URL to access Swagger UI
+    redoc_url="/python/redoc",  # URL to access ReDoc documentation
+    openapi_url="/python/openapi.json"  # URL to access OpenAPI schema
+)
 
 
 MODEL_NAME = "bls_w2v"
@@ -33,7 +37,7 @@ class InputResumseDto(BaseModel):
     ResumeDescription: str
 
 
-@app.post("/store-project")
+@app.post("/python/store-project")
 async def vectorize_store(input_data: InputProjectDto):
     try:
         text_embeds = await w2c(input_data)
@@ -49,7 +53,7 @@ async def vectorize_store(input_data: InputProjectDto):
         raise HTTPException(status_code=500, detail=f"Inference error: {e}")
     
 
-@app.post("/get-matching-projects")
+@app.post("/python/get-matching-projects")
 async def infer_method1(input_data: InputResumseDto):
     try:
         text_embeds = await w2c(input_data)

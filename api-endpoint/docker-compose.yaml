@@ -2,7 +2,7 @@ services:
   triton:
     image: jp4f-triton-api
     volumes:
-      - /Users/viet-quanggg/Downloads/w2c_module/triton_folder_w2v:/models
+      - /home/quangnvse172928_fpt_edu_vn/project/jp4f/jp4f-suggestion-module/deploy-triton/:/models
     ports:
       - "1234:8000"
       - "1235:8001"
