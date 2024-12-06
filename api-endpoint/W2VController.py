@@ -1,138 +1,203 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-# import tritonclient.grpc as grpcclient
-import tritonclient.http as httplient
-
+import tritonclient.grpc as grpcclient
+# import tritonclient.http as httplient
+import requests
+import pyodbc
+import uuid
+import gc
 import numpy as np
-
 import argparse
 import uvicorn
 from qdrant_client import QdrantClient, models
-import random
+import sys
 
+# Prevent .pyc files
+sys.dont_write_bytecode = True
 
+# FastAPI application
 app = FastAPI(
-       docs_url="/python/docs",  # URL to access Swagger UI
+    docs_url="/python/docs",  # URL to access Swagger UI
     redoc_url="/python/redoc",  # URL to access ReDoc documentation
     openapi_url="/python/openapi.json"  # URL to access OpenAPI schema
 )
 
 
+# Database configuration
+DB_CONFIG = {
+    "DRIVER": "{ODBC Driver 17 for SQL Server}",
+    "SERVER": "34.87.95.20,1433",
+    "DATABASE": "JP4F",
+    "UID": "sa",
+    "PWD": "@dmin123",
+}
+
+
 MODEL_NAME = "bls_w2v"
 MODEL_VERSION = "1"
-TRITON_URL = "localhost:1234"
+TRITON_URL = "localhost:1235"
+LOAD_URL = "localhost:1234"
 
 
 qdrant_client = QdrantClient(
     api_key="WbvUZU0wqIyJBwLHrbKI9mpiHRUCY1EAH--tdKdi2x0QX2tdoPoiTg",
-    https="https://a6ffce05-6187-4d07-908f-1f99523272b0.us-east4-0.gcp.cloud.qdrant.io"
+    url="https://a6ffce05-6187-4d07-908f-1f99523272b0.us-east4-0.gcp.cloud.qdrant.io"
 )
 
-triton_client = httplient.InferenceServerClient(url=TRITON_URL, verbose=False)
+triton_client = grpcclient.InferenceServerClient(url=TRITON_URL, verbose=False)
 
-class InputProjectDto(BaseModel):
-    projectDescription: str
 
-class InputResumseDto(BaseModel):
-    resumeDescription: str
-
+class TextInput(BaseModel):
+    text: str
 
 @app.post("/python/store-project")
-async def vectorize_store(input_data: InputProjectDto):
+async def vectorize_store():
+    """
+    Fetch projects from the database, vectorize their text, and store them in Qdrant.
+    """
     try:
-        text_embeds = await w2c(input_data)
-      
-        _ = await store_qdrant(text_embeds)
+        query = """
+            SELECT p.Id, p.JobTittle, p.JobDesciption, STRING_AGG(s.SkillName, ', ') AS Skills
+            FROM Project p
+            LEFT JOIN ProjectSkill ps ON ps.ProjectsId = p.Id
+            LEFT JOIN Skill s ON ps.SkillsId = s.Id
+            GROUP BY p.Id, p.JobTittle, p.JobDesciption;
+        """
+        with pyodbc.connect(
+            f"DRIVER={DB_CONFIG['DRIVER']};SERVER={DB_CONFIG['SERVER']};"
+            f"DATABASE={DB_CONFIG['DATABASE']};UID={DB_CONFIG['UID']};PWD={DB_CONFIG['PWD']}"
+        ) as conn:
+            cursor = conn.cursor()
+            cursor.execute(query)
         
-        
-        return {
-            "EmbeddedProject": text_embeds.tolist(),
-        }
+            for idx, row in enumerate(cursor, start=1):
+                print(f"Processing Record {idx}: ID = {row[0]}")
+                try:
+                    preprocessed_text = preprocess_text(row[1], row[2], row[3])
+                    text_embedded = await w2c(preprocessed_text)
+                    await store_qdrant(text_embedded, row[0])
+                    print(f"Record {idx} processed successfully.")
+                except Exception as e:
+                    print(f"Error processing Record {idx}: {e}")
+                finally:
+                    gc.collect()  # Clear memory and garbage collect
+                    
+        return {"message": "Store to Qdrant successful"}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Inference error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error during processing: {e}")
+
     
 
 @app.post("/python/get-matching-projects")
-async def infer_method1(input_data: InputResumseDto):
+async def infer_method1(input_data: TextInput):
+    """
+    Search for matching embeddings in Qdrant based on input text.
+    """
     try:
         text_embeds = await w2c(input_data)
-      
-        _ = await search_qdrant(text_embeds)
-        
-        return {
-            "embeddings": text_embeds.tolist(),
-        }
-
+        matching_ids = await search_qdrant(text_embeds)
+        return {"embeddings": matching_ids}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Inference error: {e}")    
+        raise HTTPException(status_code=500, detail=f"Inference error: {e}")
 
 
-async def w2c(input_data: InputProjectDto) -> np.ndarray:
+async def w2c(input_data: str) -> np.ndarray:
     try:
-        text_tensor = np.array([input_data.projectDescription], dtype=np.object_)
-        
-        # text_input = grpcclient.InferInput("TEXT", text_tensor.shape, "BYTES")
-        text_input = httplient.InferInput("TEXT", text_tensor.shape, "BYTES")
-        
-        
+        load_model()
+
+        text_tensor = np.array([input_data], dtype=np.object_)
+
+        # Prepare Triton input
+        text_input = grpcclient.InferInput("TEXT", text_tensor.shape, "BYTES")
+        # text_input = httplient.InferInput("TEXT", text_tensor.shape, "BYTES")
         text_input.set_data_from_numpy(text_tensor)
 
-        # output = grpcclient.InferRequestedOutput("VEC")
-        output = httplient.InferRequestedOutput("VEC")
+        # Prepare Triton output
+        output = grpcclient.InferRequestedOutput("VEC")
+        # output = httplient.InferRequestedOutput("VEC")
 
         response = triton_client.infer(
             model_name=MODEL_NAME,
             inputs=[text_input],
             outputs=[output],
-            model_version=MODEL_VERSION
+            model_version=MODEL_VERSION,
         )
 
         text_embeds = response.as_numpy("VEC")
+        unload_model()
         return text_embeds[0]
+    
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Inference error: {e}")   
+        raise HTTPException(status_code=500, detail=f"Inference error: {e}")
 
 
-async def store_qdrant(text_embeds: np.ndarray):
-    #Store this vector to Qdrant
-    random_id = random.randint(1, 1_000_000)
-
-    # Store vector in Qdrant
-    _ = qdrant_client.upsert(
+async def store_qdrant(text_embeds: np.ndarray, project_id: str):
+    """
+    Store embeddings in Qdrant.
+    """
+    qdrant_client.upsert(
         collection_name="jp4f-vector-db",
         points=[
             models.PointStruct(
-                id=random_id,
+                id=str(uuid.uuid4()),
                 vector=text_embeds.tolist(),
-                payload={"id": random_id},  # Add any other metadata as needed
+                payload={"id": project_id},
             )
         ],
-    )  
+    )
 
 async def search_qdrant(text_embeds: np.ndarray):
+    """
+    Search for matching embeddings in Qdrant.
+    """
     search_result = qdrant_client.query_points(
-    collection_name="jp4f-vector-db",
-    query=text_embeds.tolist(), 
-    search_params=models.SearchParams(hnsw_ef=128, exact=False),
-    limit=20,
-    with_payload=True, 
+        collection_name="jp4f-vector-db",
+        query=text_embeds.tolist(),
+        search_params=models.SearchParams(hnsw_ef=128, exact=False),
+        limit=20,
+        with_payload=True,
     )
-    print("Search result:", search_result)
-    print(type(search_result))
-    points = search_result.points
 
-# Prepare the response by iterating through the points
-    results = []
-    for point in points:
-        results.append({
-            "id": point.id,
-            "score": point.score,
-            "payload": point.payload,
-        })
-        # Display search results
-    for result in results:
-        print(f"ID: {result['id']}, Score: {result['score']}, Payload: {result['payload']}")
+    matching_results = [
+        {"id": point.payload["id"], "score": point.score} for point in search_result.points
+    ]
+    return matching_results
+
+
+def preprocess_text(title: str, description: str, skills: str) -> str:
+    """
+    Merge and preprocess text fields for vectorization.
+    """
+    return f"{title} {description} {skills}".replace("-", ".").replace("\n", " ")
+
+def load_model():
+    """
+    Load models into Triton server.
+    """
+    url = f"http://{LOAD_URL}/v2/repository/models/{MODEL_NAME}/load"
+    response = requests.post(url, json={"model_name": MODEL_NAME})
+    if response.status_code != 200:
+        print(f"Error loading model {MODEL_NAME}: {response.text}")
+    url = f"http://{LOAD_URL}/v2/repository/models/jina/load"
+    response = requests.post(url, json={"model_name": 'jina'})
+    if response.status_code != 200:
+        print(f"Error loading model jina: {response.text}")
+
+def unload_model():
+    """
+    Unload models from Triton server.
+    """
+    url = f"http://{LOAD_URL}/v2/repository/models/{MODEL_NAME}/unload"
+    response = requests.post(url, json={"model_name": MODEL_NAME})
+    if response.status_code != 200:
+        print(f"Error loading model {MODEL_NAME}: {response.text}")
+    url = f"http://{LOAD_URL}/v2/repository/models/jina/unload"
+    response = requests.post(url, json={"model_name": 'jina'})
+    if response.status_code != 200:
+        print(f"Error loading model jina: {response.text}")
+
+
 
 
 
