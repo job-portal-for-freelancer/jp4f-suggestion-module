@@ -35,8 +35,8 @@ DB_CONFIG = {
 
 MODEL_NAME = "bls_w2v"
 MODEL_VERSION = "1"
-TRITON_URL = "localhost:1235"
-LOAD_URL = "localhost:1234"
+TRITON_URL = "0.0.0.0:1235"
+LOAD_URL = "0.0.0.0:1234"
 
 
 qdrant_client = QdrantClient(

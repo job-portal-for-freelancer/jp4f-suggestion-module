@@ -2,13 +2,12 @@ services:
   triton:
     image: jp4f-triton-api
     volumes:
-      # - /home/quangnvse172928_fpt_edu_vn/project/jp4f/jp4f-suggestion-module/deploy-triton/:/models
-      - /Users/viet-quanggg/SelfProjects/JP4F/triton-inference-server/deploy-triton/:/models
+       - /home/quang.nguyenviet/project/jp4f-suggestion-module/deploy-triton/:/models
     ports:
       - "1234:8000"
       - "1235:8001"
       - "1236:8002"
-    command: tritonserver --model-repository=/models --http-port 8000 --grpc-port 8001 --metrics-port 8002
+    command: tritonserver --model-repository=/models --http-port 8000 --grpc-port 8001 --metrics-port 8002 --model-control-mode=explicit
 
     environment:
       - TRITONSERVER_MEMORY_POOL_BYTE_SIZE=0
