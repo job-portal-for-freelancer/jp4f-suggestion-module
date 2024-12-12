@@ -118,7 +118,7 @@ async def infer_method1(input_data: TextInput):
             result = cursor.fetchall()
         
         if(len(result) > 0):
-            text_embeds = await w2c(input_data)
+            text_embeds = await w2c(result)
             matching_ids = await search_qdrant(text_embeds)
             return {"embeddings": matching_ids}
         else:
@@ -184,11 +184,45 @@ async def search_qdrant(text_embeds: np.ndarray):
         limit=20,
         with_payload=True,
     )
+    
+    # Initialize null strings
+    id_string = ""
+    score_string = ""
 
-    matching_results = [
-        {"id": point.payload["id"], "score": point.score} for point in search_result.points
-    ]
-    return matching_results
+    # Loop through point.payload and add each id and score to the strings
+    for point in search_result.points:
+        id_string = id_string+"'"+point["id"] + "', "
+        score_string = score_string+"'"+ str(point['score']) + "', "
+
+
+    # Remove the trailing comma and space
+    id_string = id_string.rstrip(", ")
+    score_string = score_string.rstrip(", ")
+            
+    def create_query(id_string):
+        query = f"""
+        SELECT  *
+        FROM [JP4F].[dbo].[Project]
+        WHERE Id IN ({id_string})
+        """
+        return query        
+
+    query = create_query(id_string)
+    
+    with pyodbc.connect(
+            f"DRIVER={DB_CONFIG['DRIVER']};SERVER={DB_CONFIG['SERVER']};"
+            f"DATABASE={DB_CONFIG['DATABASE']};UID={DB_CONFIG['UID']};PWD={DB_CONFIG['PWD']}"
+    ) as conn:
+        cursor = conn.cursor()
+        cursor.execute(query)
+        result = cursor.fetchall()
+        
+     # Combine the results with their corresponding scores
+    combined_results = [(row, score) for row, score in zip(result, score_string)]
+    
+    return combined_results
+
+
 
 
 def preprocess_text(title: str, description: str, skills: str) -> str:
