@@ -188,21 +188,23 @@ async def search_qdrant(text_embeds: np.ndarray):
         with_payload=True,
     )
     
-    # Initialize lists for IDs and scores
-    ids = []
-    scores = []
+    # Initialize null strings
+    id_string = ""
+    score_string = ""
 
-    # Loop through search results and collect IDs and scores
+    # Loop through point.payload and add each id and score to the strings
     for point in search_result.points:
-        ids.append(point.payload["id"])
-        scores.append(point.score)
+        id_string = id_string+"'"+point["id"] + "', "
+        score_string = score_string+"'"+ str(point.score) + "', "
 
-    # Create a query string with the collected IDs
-    id_string = ", ".join(f"'{id}'" for id in ids)
-    
+
+    # Remove the trailing comma and space
+    id_string = id_string.rstrip(", ")
+    score_string = score_string.rstrip(", ")
+            
     def create_query(id_string):
         query = f"""
-        SELECT *
+        SELECT  *
         FROM [JP4F].[dbo].[Project]
         WHERE Id IN ({id_string})
         """
@@ -218,8 +220,8 @@ async def search_qdrant(text_embeds: np.ndarray):
         cursor.execute(query)
         result = cursor.fetchall()
         
-    # Combine the results with their corresponding scores
-    combined_results = [(row, score) for row, score in zip(result, scores)]
+     # Combine the results with their corresponding scores
+    combined_results = [(row, score) for row, score in zip(result, score_string)]
     
     return combined_results
 
