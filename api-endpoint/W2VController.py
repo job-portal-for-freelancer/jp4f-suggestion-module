@@ -195,7 +195,7 @@ async def search_qdrant(text_embeds: np.ndarray):
     # Loop through point.payload and add each id and score to the strings
     for point in search_result.points:
         id_string = id_string+"'"+point["id"] + "', "
-        score_string = score_string+"'"+ str(point['score']) + "', "
+        score_string = score_string+"'"+ str(point.score) + "', "
 
 
     # Remove the trailing comma and space
