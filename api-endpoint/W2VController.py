@@ -117,10 +117,13 @@ async def infer_method1(input_data: TextInput):
             cursor.execute(query, input_data.text)
             result = cursor.fetchall()
         
-        if(len(result) > 0):
-            text_embeds = await w2c(result)
-            matching_ids = await search_qdrant(text_embeds)
-            return {"embeddings": matching_ids}
+        if len(result) > 0:
+            profiles = [row.Profile for row in result]
+            # Join profiles into a single string
+            combined_profiles = " ".join(profiles)
+            text_embeds = await w2c(combined_profiles)
+            matching_projects = await search_qdrant(text_embeds)
+            return {"embeddings": matching_projects}
         else:
             return {"embeddings": ""}
        
