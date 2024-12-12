@@ -95,9 +95,35 @@ async def infer_method1(input_data: TextInput):
     Search for matching embeddings in Qdrant based on input text.
     """
     try:
-        text_embeds = await w2c(input_data)
-        matching_ids = await search_qdrant(text_embeds)
-        return {"embeddings": matching_ids}
+        query = """
+        SELECT 
+            STRING_AGG(CONCAT(u.Education, ' ', u.Bio, ' ', u.Experience, ' ', s.SkillName, ' '), ' ') AS Profile
+        FROM 
+            AspNetUsers AS u
+        JOIN 
+            FreelancerSkill AS fs ON u.Id = fs.FreelancersId
+        LEFT JOIN 
+            Skill AS s ON fs.SkillsId = s.Id
+        WHERE 
+            u.Id = ?
+        GROUP BY 
+            u.Id, u.Education, u.Bio, u.Experience;
+        """
+        with pyodbc.connect(
+                f"DRIVER={DB_CONFIG['DRIVER']};SERVER={DB_CONFIG['SERVER']};"
+                f"DATABASE={DB_CONFIG['DATABASE']};UID={DB_CONFIG['UID']};PWD={DB_CONFIG['PWD']}"
+        ) as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, input_data.text)
+            result = cursor.fetchall()
+        
+        if(len(result) > 0):
+            text_embeds = await w2c(input_data)
+            matching_ids = await search_qdrant(text_embeds)
+            return {"embeddings": matching_ids}
+        else:
+            return {"embeddings": ""}
+       
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Inference error: {e}")
 
