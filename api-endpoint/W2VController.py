@@ -189,14 +189,14 @@ async def search_qdrant(text_embeds: np.ndarray):
     )
     
     # Initialize null strings
+    # Initialize null strings
     id_string = ""
     score_string = ""
 
     # Loop through point.payload and add each id and score to the strings
-    for point in search_result.points:
+    for point in search_result:
         id_string = id_string+"'"+point["id"] + "', "
-        score_string = score_string+"'"+ str(point.score) + "', "
-
+        score_string = score_string+"'"+ str(point['score']) + "', "
 
     # Remove the trailing comma and space
     id_string = id_string.rstrip(", ")
@@ -210,8 +210,9 @@ async def search_qdrant(text_embeds: np.ndarray):
         """
         return query        
 
+
     query = create_query(id_string)
-    
+
     with pyodbc.connect(
             f"DRIVER={DB_CONFIG['DRIVER']};SERVER={DB_CONFIG['SERVER']};"
             f"DATABASE={DB_CONFIG['DATABASE']};UID={DB_CONFIG['UID']};PWD={DB_CONFIG['PWD']}"
@@ -220,10 +221,7 @@ async def search_qdrant(text_embeds: np.ndarray):
         cursor.execute(query)
         result = cursor.fetchall()
         
-     # Combine the results with their corresponding scores
-    combined_results = [(row, score) for row, score in zip(result, score_string)]
-    
-    return combined_results
+        print('result',result)
 
 
 
