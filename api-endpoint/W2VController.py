@@ -219,7 +219,7 @@ async def search_qdrant(text_embeds: np.ndarray, number_of_output_projects:int):
         cursor.execute(query)
         result = cursor.fetchall()
 
-    result = toJson(result)
+    result = toJson(result, score_list)
     return result
 
 def create_query(id_string):
@@ -262,7 +262,7 @@ def unload_model():
     if response.status_code != 200:
         print(f"Error loading model jina: {response.text}")
 
-def toJson(result):
+def toJson(result, score_list) -> JSONResponse:
     projects = {
         "results": [
             {
@@ -277,9 +277,10 @@ def toJson(result):
                 "isFeedback": project[7],
                 "oldProject": project[8],
                 "isUrgent": project[9],
-                "status": project[14]
+                "status": project[14],
+                "matchingScore": score_list[ith]*100
             }
-            for project in result
+            for ith, project in enumerate(result)
         ]
     }
 
