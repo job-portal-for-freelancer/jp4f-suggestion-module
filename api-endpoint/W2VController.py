@@ -1,5 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
+import asyncio
+from fastapi.middleware.cors import CORSMiddleware
 
 from pydantic import BaseModel
 import tritonclient.grpc as grpcclient
@@ -16,6 +18,7 @@ import re
 import json
 import datetime
 from langchain import PromptTemplate
+import time
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 import os
@@ -30,7 +33,18 @@ app = FastAPI(
     redoc_url="/python/redoc",  # URL to access ReDoc documentation
     openapi_url="/python/openapi.json"  # URL to access OpenAPI schema
 )
+origins = [
+    "https://jp4f.id.vn",
+    "https://localhost:3000",
+]
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Database configuration
 DB_CONFIG = {
@@ -115,6 +129,7 @@ async def infer_method1(input_data: TextInput):
     Search for matching embeddings in Qdrant based on input text.
     """
     try:
+        start_time = time.time()
         query = """
         SELECT 
             STRING_AGG(CONCAT(u.Education, ' ', u.Bio, ' ', u.Experience, ' ', s.SkillName, ' '), ' ') AS Profile
@@ -141,6 +156,9 @@ async def infer_method1(input_data: TextInput):
             print(cleaned_data)
             text_embeds = await w2c(cleaned_data)
             matching_projects = await search_qdrant(text_embeds, input_data.number_output_projects)
+            end_time = time.time()  # Capture end time
+            runtime = end_time - start_time  # Calculate runtime
+            print(f"Function 'matching full function' executed in {runtime:.4f} seconds.")
             return matching_projects
         else:
             return {"Can not find the CV in our database": None}
@@ -158,19 +176,19 @@ async def suggest_description(input_data: Description):
     return response.content  
 
 async def w2c(input_data: str) -> np.ndarray:
+    """Convert input text to embeddings using Triton."""
     try:
-        load_model()
+        start_time = time.time()
 
+        load_model()
+        
         text_tensor = np.array([input_data], dtype=np.object_)
 
-        # Prepare Triton input
+        # Prepare Triton input and output
         text_input = grpcclient.InferInput("TEXT", text_tensor.shape, "BYTES")
-        # text_input = httplient.InferInput("TEXT", text_tensor.shape, "BYTES")
         text_input.set_data_from_numpy(text_tensor)
 
-        # Prepare Triton output
         output = grpcclient.InferRequestedOutput("VEC")
-        # output = httplient.InferRequestedOutput("VEC")
 
         response = triton_client.infer(
             model_name=MODEL_NAME,
@@ -180,11 +198,16 @@ async def w2c(input_data: str) -> np.ndarray:
         )
 
         text_embeds = response.as_numpy("VEC")
-        unload_model()
+
+        end_time = time.time()  # Capture end time
+        runtime = end_time - start_time  # Calculate runtime
+        print(f"Function 'TRITON' executed in {runtime:.4f} seconds.")
         return text_embeds[0]
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Inference error: {e}")
+    finally:
+        await asyncio.to_thread(unload_model)
 
 
 async def store_qdrant(text_embeds: np.ndarray, project_id: str):
@@ -206,6 +229,8 @@ async def search_qdrant(text_embeds: np.ndarray, number_of_output_projects:int):
     """
     Search for matching embeddings in Qdrant.
     """
+    start_time = time.time()
+
     search_result = qdrant_client.query_points(
         collection_name="jp4f-vector-db",
         query=text_embeds.tolist(),
@@ -242,6 +267,9 @@ async def search_qdrant(text_embeds: np.ndarray, number_of_output_projects:int):
         result = cursor.fetchall()
 
     result = toJson(result, score_list)
+    end_time = time.time()  # Capture end time
+    runtime = end_time - start_time  # Calculate runtime
+    print(f"Function 'QDRANT' executed in {runtime:.4f} seconds.")
     return result
 
 def create_query(id_string):
