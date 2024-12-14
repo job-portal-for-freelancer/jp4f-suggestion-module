@@ -18,7 +18,6 @@ import re
 import json
 import datetime
 from langchain import PromptTemplate
-import time
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 import os
@@ -129,7 +128,7 @@ async def infer_method1(input_data: TextInput):
     Search for matching embeddings in Qdrant based on input text.
     """
     try:
-        start_time = time.time()
+
         query = """
         SELECT 
             STRING_AGG(CONCAT(u.Education, ' ', u.Bio, ' ', u.Experience, ' ', s.SkillName, ' '), ' ') AS Profile
@@ -156,9 +155,7 @@ async def infer_method1(input_data: TextInput):
             print(cleaned_data)
             text_embeds = await w2c(cleaned_data)
             matching_projects = await search_qdrant(text_embeds, input_data.number_output_projects)
-            end_time = time.time()  # Capture end time
-            runtime = end_time - start_time  # Calculate runtime
-            print(f"Function 'matching full function' executed in {runtime:.4f} seconds.")
+
             return matching_projects
         else:
             return {"Can not find the CV in our database": None}
@@ -178,10 +175,11 @@ async def suggest_description(input_data: Description):
 async def w2c(input_data: str) -> np.ndarray:
     """Convert input text to embeddings using Triton."""
     try:
-        start_time = time.time()
+
 
         load_model()
-        
+
+
         text_tensor = np.array([input_data], dtype=np.object_)
 
         # Prepare Triton input and output
@@ -199,9 +197,6 @@ async def w2c(input_data: str) -> np.ndarray:
 
         text_embeds = response.as_numpy("VEC")
 
-        end_time = time.time()  # Capture end time
-        runtime = end_time - start_time  # Calculate runtime
-        print(f"Function 'TRITON' executed in {runtime:.4f} seconds.")
         return text_embeds[0]
     
     except Exception as e:
@@ -229,7 +224,6 @@ async def search_qdrant(text_embeds: np.ndarray, number_of_output_projects:int):
     """
     Search for matching embeddings in Qdrant.
     """
-    start_time = time.time()
 
     search_result = qdrant_client.query_points(
         collection_name="jp4f-vector-db",
@@ -267,9 +261,7 @@ async def search_qdrant(text_embeds: np.ndarray, number_of_output_projects:int):
         result = cursor.fetchall()
 
     result = toJson(result, score_list)
-    end_time = time.time()  # Capture end time
-    runtime = end_time - start_time  # Calculate runtime
-    print(f"Function 'QDRANT' executed in {runtime:.4f} seconds.")
+
     return result
 
 def create_query(id_string):
