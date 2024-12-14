@@ -3,7 +3,6 @@ from fastapi.responses import JSONResponse
 
 from pydantic import BaseModel
 import tritonclient.grpc as grpcclient
-# import tritonclient.http as httplient
 import requests
 import pyodbc
 import uuid
@@ -16,6 +15,11 @@ import sys
 import re
 import json
 import datetime
+from langchain import PromptTemplate
+
+from langchain_google_genai import ChatGoogleGenerativeAI
+import os
+from prompt_format import *
 
 # Prevent .pyc files
 sys.dont_write_bytecode = True
@@ -43,6 +47,16 @@ MODEL_VERSION = "1"
 TRITON_URL = "0.0.0.0:1235"
 LOAD_URL = "0.0.0.0:1234"
 
+# Gemini connection
+os.environ["GOOGLE_API_KEY"] = 'AIzaSyCOwBiiPYVe6fbu_AgstJwx4RxLQTrOfs8'
+chat_model = ChatGoogleGenerativeAI(
+    model="gemini-1.5-pro",
+    temperature=0,
+    max_tokens=None,
+    timeout=None,
+    max_retries=2,
+    # other params...
+)
 
 qdrant_client = QdrantClient(
     api_key="WbvUZU0wqIyJBwLHrbKI9mpiHRUCY1EAH--tdKdi2x0QX2tdoPoiTg",
@@ -134,6 +148,14 @@ async def infer_method1(input_data: TextInput):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Inference error: {e}")
 
+class Description(BaseModel):
+    prompt: str
+
+@app.post("/python/suggest-description")
+async def suggest_description(input_data: Description):
+    formated_prompt = await format_prompt(input_data.prompt)
+    response = chat_model.invoke([{"role": "user", "content": str(formated_prompt)}])  # Use the invoke method
+    return response.content  
 
 async def w2c(input_data: str) -> np.ndarray:
     try:
@@ -287,6 +309,19 @@ def toJson(result, score_list) -> JSONResponse:
     # Convert to JSON string
     # projects_json = json.dumps(projects, indent=4)
     return JSONResponse(content=projects)
+
+async def format_prompt(input_prompt: str):
+    prompt_template = PromptTemplate(
+    input_variables=["prompt", 'system', 'instruction'],
+    template=prompt_structure
+    )
+
+    formated = prompt_template.format(
+            prompt=input_prompt,
+            system=system_prompt,
+            instruction=instruction
+        )
+    return formated
 
 
 def main():
