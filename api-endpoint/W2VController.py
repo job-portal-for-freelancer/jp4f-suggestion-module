@@ -1,4 +1,6 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
+
 from pydantic import BaseModel
 import tritonclient.grpc as grpcclient
 # import tritonclient.http as httplient
@@ -11,6 +13,9 @@ import argparse
 import uvicorn
 from qdrant_client import QdrantClient, models
 import sys
+import re
+import json
+import datetime
 
 # Prevent .pyc files
 sys.dont_write_bytecode = True
@@ -49,6 +54,7 @@ triton_client = grpcclient.InferenceServerClient(url=TRITON_URL, verbose=False)
 
 class TextInput(BaseModel):
     text: str
+    number_output_projects: int = 5
 
 @app.post("/python/store-project")
 async def vectorize_store():
@@ -114,18 +120,16 @@ async def infer_method1(input_data: TextInput):
                 f"DATABASE={DB_CONFIG['DATABASE']};UID={DB_CONFIG['UID']};PWD={DB_CONFIG['PWD']}"
         ) as conn:
             cursor = conn.cursor()
-            cursor.execute(query, input_data.text)
+            cursor.execute(query, str(input_data.text))
             result = cursor.fetchall()
-        
         if len(result) > 0:
-            profiles = [row.Profile for row in result]
-            # Join profiles into a single string
-            combined_profiles = " ".join(profiles)
-            text_embeds = await w2c(combined_profiles)
-            matching_projects = await search_qdrant(text_embeds)
-            return {"embeddings": matching_projects}
+            cleaned_data = re.sub(r'^\[\("\s*|\s*"\,\)\]$', '', str(result))
+            print(cleaned_data)
+            text_embeds = await w2c(cleaned_data)
+            matching_projects = await search_qdrant(text_embeds, input_data.number_output_projects)
+            return matching_projects
         else:
-            return {"embeddings": ""}
+            return {"Can not find the CV in our database": None}
        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Inference error: {e}")
@@ -176,7 +180,7 @@ async def store_qdrant(text_embeds: np.ndarray, project_id: str):
         ],
     )
 
-async def search_qdrant(text_embeds: np.ndarray):
+async def search_qdrant(text_embeds: np.ndarray, number_of_output_projects:int):
     """
     Search for matching embeddings in Qdrant.
     """
@@ -184,35 +188,29 @@ async def search_qdrant(text_embeds: np.ndarray):
         collection_name="jp4f-vector-db",
         query=text_embeds.tolist(),
         search_params=models.SearchParams(hnsw_ef=128, exact=False),
-        limit=20,
+        limit=number_of_output_projects,
         with_payload=True,
     )
     
     # Initialize null strings
     # Initialize null strings
     id_string = ""
-    score_string = ""
-
+    score_list = []
     # Loop through point.payload and add each id and score to the strings
-    for point in search_result:
-        id_string = id_string+"'"+point["id"] + "', "
-        score_string = score_string+"'"+ str(point['score']) + "', "
-
+    print(search_result)
+    print(type(search_result))
+    for point in search_result.points:
+        id_string += f"'{point.payload['id']}', "
+        score_list.append(point.score)
+    print("2")
     # Remove the trailing comma and space
     id_string = id_string.rstrip(", ")
-    score_string = score_string.rstrip(", ")
-            
-    def create_query(id_string):
-        query = f"""
-        SELECT  *
-        FROM [JP4F].[dbo].[Project]
-        WHERE Id IN ({id_string})
-        """
-        return query        
-
+    print("3")
+    print("id string",id_string)
+    
 
     query = create_query(id_string)
-
+    print("4")
     with pyodbc.connect(
             f"DRIVER={DB_CONFIG['DRIVER']};SERVER={DB_CONFIG['SERVER']};"
             f"DATABASE={DB_CONFIG['DATABASE']};UID={DB_CONFIG['UID']};PWD={DB_CONFIG['PWD']}"
@@ -220,11 +218,17 @@ async def search_qdrant(text_embeds: np.ndarray):
         cursor = conn.cursor()
         cursor.execute(query)
         result = cursor.fetchall()
-        
-        print('result',result)
 
+    result = toJson(result)
+    return result
 
-
+def create_query(id_string):
+    query = f"""
+    SELECT  *
+    FROM [JP4F].[dbo].[Project]
+    WHERE Id IN ({id_string})
+    """
+    return query   
 
 def preprocess_text(title: str, description: str, skills: str) -> str:
     """
@@ -258,8 +262,30 @@ def unload_model():
     if response.status_code != 200:
         print(f"Error loading model jina: {response.text}")
 
+def toJson(result):
+    projects = {
+        "results": [
+            {
+                "id": project[0],
+                "jobTittle": project[1],
+                "budgetMin": project[2],
+                "budgetMax": project[3],
+                "jobDesciption": project[4],
+                "deadline": project[5].isoformat() if isinstance(project[5], datetime.datetime) else None,
+                "estimateDay": project[6],
+                "created": project[10].isoformat() if isinstance(project[10], datetime.datetime) else None,
+                "isFeedback": project[7],
+                "oldProject": project[8],
+                "isUrgent": project[9],
+                "status": project[14]
+            }
+            for project in result
+        ]
+    }
 
-
+    # Convert to JSON string
+    # projects_json = json.dumps(projects, indent=4)
+    return JSONResponse(content=projects)
 
 
 def main():
